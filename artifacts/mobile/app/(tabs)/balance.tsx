@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { useGetWeeklySummary } from "@workspace/api-client-react";
-import type { Category } from "@workspace/api-client-react";
-import { EmptyState, ErrorState, PageHeader, PlannerPage, SectionHeading, Surface } from "@/components/PlannerUI";
-import { useAuth } from "@/context/AuthContext";
+import {
+  EmptyState,
+  PageHeader,
+  PlannerPage,
+  SectionHeading,
+  Surface,
+} from "@/components/PlannerUI";
+import { PLANNER_CATEGORIES, usePlanner, type PlannerCategory } from "@/context/PlannerContext";
 import { useColors } from "@/hooks/useColors";
 
 function mondayOf(date: Date) {
@@ -12,128 +16,129 @@ function mondayOf(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() - offset);
 }
 
-const categoryList: Category[] = ["School", "Clubs", "Tutoring", "Study", "Social", "Personal"];
+function duration(minutes: number) {
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
 
 export default function BalanceScreen() {
   const colors = useColors();
-  const { user } = useAuth();
+  const { events } = usePlanner();
   const [focusDate, setFocusDate] = useState(() => new Date());
   const weekStart = useMemo(() => mondayOf(focusDate), [focusDate]);
-  const query = useGetWeeklySummary(
-    { weekStart: weekStart.toISOString() },
-    { query: { enabled: !!user } },
-  );
-  const summary = query.data;
   const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  const period = `${weekStart.toLocaleDateString([], { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString([], { month: "short", day: "numeric" })}`;
-  const byCategory = new Map((summary?.categories ?? []).map((row) => [row.category, row]));
-  const hasTime = Boolean(summary?.totalMinutes);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const periodEnd = new Date(weekEnd.getTime() - 1);
+  const period = `${weekStart.toLocaleDateString([], { month: "short", day: "numeric" })} – ${periodEnd.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  const values = useMemo(() => {
+    const totals = new Map<PlannerCategory, number>(
+      PLANNER_CATEGORIES.map((category) => [category, 0]),
+    );
+    const start = weekStart.getTime();
+    const end = weekEnd.getTime();
+    for (const event of events) {
+      const eventStart = new Date(event.startsAt).getTime();
+      const eventEnd = new Date(event.endsAt).getTime();
+      const overlap = Math.max(0, Math.min(eventEnd, end) - Math.max(eventStart, start));
+      if (overlap > 0) {
+        totals.set(event.category, (totals.get(event.category) ?? 0) + overlap / 60_000);
+      }
+    }
+    const rounded = new Map(
+      Array.from(totals, ([category, minutes]) => [category, Math.round(minutes)] as const),
+    );
+    const totalMinutes = Array.from(rounded.values()).reduce((sum, minutes) => sum + minutes, 0);
+    return {
+      totalMinutes,
+      categories: PLANNER_CATEGORIES.map((category) => {
+        const minutes = rounded.get(category) ?? 0;
+        return {
+          category,
+          minutes,
+          percent: totalMinutes ? Math.round((minutes / totalMinutes) * 100) : 0,
+        };
+      }),
+    };
+  }, [events, weekEnd, weekStart]);
+
+  const categoryColor = (category: PlannerCategory) => {
+    switch (category) {
+      case "School": return colors.categorySchool;
+      case "Clubs": return colors.categoryClubs;
+      case "Tutoring": return colors.categoryTutoring;
+      case "Study": return colors.categoryStudy;
+      case "Social": return colors.categorySocial;
+      case "Personal": return colors.categoryPersonal;
+    }
+  };
 
   return (
-    <PlannerPage
-      refreshControl={
-        <RefreshControl
-          refreshing={query.isFetching}
-          onRefresh={() => void query.refetch()}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <PlannerPage>
       <PageHeader title="Balance" subtitle="How your planned time is shared." />
-      {query.isLoading ? (
-        <View style={styles.loading}><Text style={{ color: colors.mutedForeground }}>Loading your week…</Text></View>
-      ) : query.isError ? (
-        <ErrorState
-          message={query.error instanceof Error ? query.error.message : "Could not load your time summary."}
-          onRetry={() => void query.refetch()}
-        />
-      ) : (
-        <>
-          <Surface style={styles.totalCard}>
-            <View style={styles.totalIcon}>
-              <Feather name="pie-chart" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.totalCopy}>
-              <Text style={[styles.totalValue, { color: colors.foreground, fontFamily: colors.fontFamily.bold }]}>
-                {Math.floor((summary?.totalMinutes ?? 0) / 60)}h {(summary?.totalMinutes ?? 0) % 60}m
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>planned this week</Text>
-            </View>
-          </Surface>
+      <Surface style={styles.totalCard}>
+        <View style={[styles.totalIcon, { backgroundColor: colors.secondary }]}>
+          <Feather name="pie-chart" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.totalCopy}>
+          <Text style={[styles.totalValue, { color: colors.foreground, fontFamily: colors.fontFamily.bold }]}>
+            {duration(values.totalMinutes)}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>planned this week</Text>
+        </View>
+      </Surface>
 
-          <Surface style={styles.balanceCard}>
-            <View style={styles.periodRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Previous week"
-                testID="balance-previous-week"
-                onPress={() => setFocusDate((date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - 7))}
-                style={styles.arrow}
-              >
-                <Feather name="chevron-left" size={20} color={colors.foreground} />
-              </Pressable>
-              <Text style={[styles.period, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>{period}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Next week"
-                testID="balance-next-week"
-                onPress={() => setFocusDate((date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7))}
-                style={styles.arrow}
-              >
-                <Feather name="chevron-right" size={20} color={colors.foreground} />
-              </Pressable>
-            </View>
-            <SectionHeading title="Time by category" />
-            {hasTime ? (
-              <View style={styles.rows}>
-                {categoryList.map((category) => {
-                  const entry = byCategory.get(category);
-                  const minutes = entry?.minutes ?? 0;
-                  const percent = entry?.percent ?? 0;
-                  const color =
-                    category === "School" ? colors.categorySchool :
-                    category === "Clubs" ? colors.categoryClubs :
-                    category === "Tutoring" ? colors.categoryTutoring :
-                    category === "Study" ? colors.categoryStudy :
-                    category === "Social" ? colors.categorySocial : colors.categoryPersonal;
-                  return (
-                    <View key={category} style={styles.categoryRow}>
-                      <View style={styles.categoryLine}>
-                        <View style={styles.categoryName}>
-                          <View style={[styles.dot, { backgroundColor: color }]} />
-                          <Text style={[styles.name, { color: colors.foreground, fontFamily: colors.fontFamily.medium }]}>{category}</Text>
-                        </View>
-                        <Text style={[styles.value, { color: colors.mutedForeground }]}>
-                          {Math.floor(minutes / 60)}h {minutes % 60}m · {percent}%
-                        </Text>
-                      </View>
-                      <View style={[styles.track, { backgroundColor: colors.muted, borderRadius: colors.radius.pill }]}>
-                        <View
-                          style={[
-                            styles.fill,
-                            {
-                              width: `${Math.max(0, Math.min(100, percent))}%`,
-                              backgroundColor: color,
-                              borderRadius: colors.radius.pill,
-                            },
-                          ]}
-                        />
-                      </View>
+      <Surface style={styles.balanceCard}>
+        <View style={styles.periodRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous week"
+            testID="balance-previous-week"
+            onPress={() => setFocusDate((date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - 7))}
+            style={styles.arrow}
+          >
+            <Feather name="chevron-left" size={20} color={colors.foreground} />
+          </Pressable>
+          <Text style={[styles.period, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>{period}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next week"
+            testID="balance-next-week"
+            onPress={() => setFocusDate((date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7))}
+            style={styles.arrow}
+          >
+            <Feather name="chevron-right" size={20} color={colors.foreground} />
+          </Pressable>
+        </View>
+        <SectionHeading title="Time by category" />
+        {values.totalMinutes > 0 ? (
+          <View style={styles.rows}>
+            {values.categories.map(({ category, minutes, percent }) => {
+              const color = categoryColor(category);
+              return (
+                <View key={category} style={styles.categoryRow}>
+                  <View style={styles.categoryLine}>
+                    <View style={styles.categoryName}>
+                      <View style={[styles.dot, { backgroundColor: color }]} />
+                      <Text style={[styles.name, { color: colors.foreground, fontFamily: colors.fontFamily.medium }]}>{category}</Text>
                     </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <EmptyState
-                icon="clock"
-                title="No time logged yet"
-                description="Add events to your week to see how your time is divided."
-              />
-            )}
-          </Surface>
-        </>
-      )}
+                    <Text style={[styles.value, { color: colors.mutedForeground }]}>
+                      {duration(minutes)} · {percent}%
+                    </Text>
+                  </View>
+                  <View style={[styles.track, { backgroundColor: colors.muted, borderRadius: colors.radius.pill }]}>
+                    <View style={[styles.fill, { width: `${percent}%`, backgroundColor: color, borderRadius: colors.radius.pill }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <EmptyState
+            icon="clock"
+            title="No time planned yet"
+            description="Add events to your week to see how your time is divided."
+          />
+        )}
+      </Surface>
     </PlannerPage>
   );
 }
@@ -156,5 +161,4 @@ const styles = StyleSheet.create({
   value: { fontSize: 11 },
   track: { height: 7, overflow: "hidden" },
   fill: { height: 7 },
-  loading: { minHeight: 170, alignItems: "center", justifyContent: "center" },
 });

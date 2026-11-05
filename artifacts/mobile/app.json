@@ -13,11 +13,14 @@
     "android": {},
     "web": {
       "favicon": "./assets/images/icon.png",
-      "output": "static"
+      "output": "static",
+      "name": "Senior Planner",
+      "shortName": "Planner",
+      "themeColor": "#315a46",
+      "backgroundColor": "#f7f5ef"
     },
     "plugins": [
-      "expo-router",
-      "expo-sharing"
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true,

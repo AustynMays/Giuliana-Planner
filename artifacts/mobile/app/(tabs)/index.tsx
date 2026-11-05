@@ -1,28 +1,11 @@
 import React, { useMemo, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  getListTasksQueryKey,
-  useListEvents,
-  useListTasks,
-  useUpdateTask,
-} from "@workspace/api-client-react";
-import type { Task } from "@workspace/api-client-react";
 import {
   CategoryChip,
   EmptyState,
-  ErrorState,
   IconButton,
-  LoadingState,
   PageHeader,
   PlannerPage,
   SectionHeading,
@@ -33,7 +16,7 @@ import {
   formatClock,
   formatLongDate,
 } from "@/components/PlannerUI";
-import { useAuth } from "@/context/AuthContext";
+import { usePlanner } from "@/context/PlannerContext";
 import { useColors } from "@/hooks/useColors";
 
 function openForm(params: Record<string, string>) {
@@ -42,78 +25,30 @@ function openForm(params: Record<string, string>) {
 
 export default function TodayScreen() {
   const colors = useColors();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const planner = usePlanner();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const dateKey = dateToInput(selectedDate);
-  const nextDay = new Date(selectedDate);
-  nextDay.setDate(nextDay.getDate() + 1);
-  const eventQuery = useListEvents(
-    {
-      from: new Date(`${dateKey}T00:00:00`).toISOString(),
-      to: new Date(`${dateToInput(nextDay)}T00:00:00`).toISOString(),
-    },
-    { query: { enabled: !!user } },
+  const tasks = useMemo(
+    () =>
+      planner.tasks
+        .filter((task) => task.date === dateKey)
+        .sort((a, b) => Number(a.completed) - Number(b.completed) || (a.time ?? "").localeCompare(b.time ?? "")),
+    [dateKey, planner.tasks],
   );
-  const taskQuery = useListTasks(
-    { from: dateKey, to: dateKey },
-    { query: { enabled: !!user } },
+  const events = useMemo(
+    () =>
+      planner.events
+        .filter((event) => dateToInput(new Date(event.startsAt)) === dateKey)
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    [dateKey, planner.events],
   );
-  const updateTask = useUpdateTask();
-  const events = eventQuery.data ?? [];
-  const tasks = taskQuery.data ?? [];
-  const completed = useMemo(() => tasks.filter((task) => task.completed).length, [tasks]);
-  const refreshing = eventQuery.isFetching || taskQuery.isFetching;
+  const completed = tasks.filter((task) => task.completed).length;
 
-  const refresh = () => {
-    void Promise.all([eventQuery.refetch(), taskQuery.refetch()]);
-  };
-
-  const toggleTask = async (task: Task) => {
-    try {
-      await updateTask.mutateAsync({
-        id: task.id,
-        data: {
-          title: task.title,
-          date: task.date,
-          time: task.time ?? null,
-          category: task.category,
-          notes: task.notes ?? null,
-          completed: !task.completed,
-        },
-      });
-      await queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-    } catch (error) {
-      Alert.alert(
-        "Could not update task",
-        error instanceof Error ? error.message : "Try again in a moment.",
-      );
-    }
-  };
-
-  if (eventQuery.isLoading || taskQuery.isLoading) {
-    return <PlannerPage><PageHeader title="Today" /><LoadingState /></PlannerPage>;
-  }
-  if (eventQuery.isError || taskQuery.isError) {
-    const query = eventQuery.isError ? eventQuery : taskQuery;
-    return (
-      <PlannerPage>
-        <PageHeader title="Today" />
-        <ErrorState message={query.error instanceof Error ? query.error.message : "Could not load your day."} onRetry={refresh} />
-      </PlannerPage>
-    );
-  }
+  const moveDate = (delta: number) =>
+    setSelectedDate((value) => new Date(value.getFullYear(), value.getMonth(), value.getDate() + delta));
 
   return (
-    <PlannerPage
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <PlannerPage>
       <PageHeader
         title="Today"
         subtitle={formatLongDate(selectedDate)}
@@ -127,13 +62,40 @@ export default function TodayScreen() {
         }
       />
 
+      {planner.backupDue ? (
+        <Pressable
+          accessibilityRole="button"
+          testID="backup-reminder"
+          onPress={() => router.push("/(tabs)/settings" as never)}
+          style={[
+            styles.reminder,
+            { backgroundColor: colors.secondary, borderRadius: colors.radius.medium },
+          ]}
+        >
+          <Feather name="download-cloud" size={17} color={colors.primary} />
+          <Text style={[styles.reminderText, { color: colors.secondaryForeground, fontFamily: colors.fontFamily.medium }]}>
+            It’s been over a week since your last backup.
+          </Text>
+          <Feather name="chevron-right" size={17} color={colors.primary} />
+        </Pressable>
+      ) : null}
+
+      {planner.storageError ? (
+        <Surface style={styles.storageWarning}>
+          <Feather name="alert-circle" size={17} color={colors.destructive} />
+          <Text style={{ color: colors.foreground, flex: 1, fontSize: 12, lineHeight: 18 }}>
+            {planner.storageError}
+          </Text>
+        </Surface>
+      ) : null}
+
       <Surface style={styles.dateSurface}>
         <View style={styles.dateBar}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Previous day"
             testID="previous-day"
-            onPress={() => setSelectedDate((value) => new Date(value.getFullYear(), value.getMonth(), value.getDate() - 1))}
+            onPress={() => moveDate(-1)}
             style={styles.dateArrow}
           >
             <Feather name="chevron-left" size={20} color={colors.foreground} />
@@ -150,7 +112,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel="Next day"
             testID="next-day"
-            onPress={() => setSelectedDate((value) => new Date(value.getFullYear(), value.getMonth(), value.getDate() + 1))}
+            onPress={() => moveDate(1)}
             style={styles.dateArrow}
           >
             <Feather name="chevron-right" size={20} color={colors.foreground} />
@@ -169,19 +131,17 @@ export default function TodayScreen() {
             secondary
             testID="add-event"
             onPress={() =>
-              openForm({
-                kind: "event",
-                date: dateKey,
-                time: "15:00",
-                endTime: "16:00",
-              })
+              openForm({ kind: "event", date: dateKey, time: "15:00", endTime: "16:00" })
             }
           />
         </View>
       </Surface>
 
       <View style={styles.sectionBlock}>
-        <SectionHeading title="Schedule" trailing={<Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{events.length} planned</Text>} />
+        <SectionHeading
+          title="Schedule"
+          trailing={<Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{events.length} planned</Text>}
+        />
         {events.length === 0 ? (
           <Surface>
             <EmptyState
@@ -253,9 +213,7 @@ export default function TodayScreen() {
           title="To-do"
           trailing={
             tasks.length > 0 ? (
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                {tasks.length - completed} left
-              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{tasks.length - completed} left</Text>
             ) : null
           }
         />
@@ -265,13 +223,7 @@ export default function TodayScreen() {
               icon="check-square"
               title="Nothing on the list"
               description="Capture a task here so it doesn't have to stay in your head."
-              action={
-                <SmallButton
-                  label="Add task"
-                  icon="plus"
-                  onPress={() => openForm({ kind: "task", date: dateKey })}
-                />
-              }
+              action={<SmallButton label="Add task" icon="plus" onPress={() => openForm({ kind: "task", date: dateKey })} />}
             />
           </Surface>
         ) : (
@@ -292,7 +244,7 @@ export default function TodayScreen() {
                   accessibilityState={{ checked: task.completed }}
                   accessibilityLabel={`Mark ${task.title} ${task.completed ? "incomplete" : "complete"}`}
                   testID={`toggle-task-${task.id}`}
-                  onPress={() => void toggleTask(task)}
+                  onPress={() => planner.updateTask(task.id, { completed: !task.completed })}
                   style={[
                     styles.checkbox,
                     {
@@ -367,6 +319,9 @@ export default function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
+  reminder: { minHeight: 48, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 10 },
+  reminderText: { flex: 1, fontSize: 12 },
+  storageWarning: { flexDirection: "row", alignItems: "center", gap: 10 },
   dateSurface: { gap: 14 },
   dateBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   dateArrow: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
@@ -375,27 +330,14 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: "row", gap: 9 },
   sectionBlock: { gap: 10 },
   list: { gap: 9 },
-  eventCard: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 12,
-    padding: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
+  eventCard: { flexDirection: "row", alignItems: "stretch", gap: 12, padding: 13, borderWidth: StyleSheet.hairlineWidth },
   eventLine: { width: 3, borderRadius: 3 },
   eventContent: { flex: 1, gap: 6, alignItems: "flex-start" },
   eventTime: { fontSize: 12 },
   eventTitle: { fontSize: 15 },
   taskList: { paddingVertical: 0, paddingHorizontal: 14 },
   taskRow: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 11 },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  checkbox: { width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
   taskTextWrap: { flex: 1, gap: 7, paddingVertical: 12 },
   taskTitle: { fontSize: 14, lineHeight: 19 },
   taskMeta: { flexDirection: "row", alignItems: "center", gap: 8 },

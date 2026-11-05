@@ -1,24 +1,23 @@
 kind = "mobile"
-previewPath = "/mobile/"
+previewPath = "/"
 title = "Senior Planner"
-description = "A mobile-first planner for a busy high school senior to manage daily tasks, weekly events, assignments, tests, and balance across school and personal life, with secure accounts and data sync."
+description = "A private, offline-capable planner that stores tasks, events, and due dates on this device."
 version = "1.0.0"
 id = "artifacts/mobile"
-router = "expo-domain"
+router = "path"
 
 [[services]]
 name = "expo"
-ensurePreviewReachable = "/status"
-paths = [ "/mobile/" ]
+ensurePreviewReachable = "/"
+paths = [ "/" ]
 localPort = 18115
 
 [services.development]
 run = "pnpm --filter @workspace/mobile run dev"
 
 [services.production]
+serve = "static"
 build = [ "pnpm", "--filter", "@workspace/mobile", "run", "build" ]
-run = [ "pnpm", "--filter", "@workspace/mobile", "run", "serve" ]
 
 [services.env]
 PORT = "18115"
-BASE_PATH = "/mobile/"

@@ -1,98 +1,79 @@
 # Senior Planner
 
-A native Expo planner for a high school senior. It includes email/password
-accounts, synced events and tasks, assignment and test due dates, a weekly time
-balance, and JSON backups.
+Senior Planner is a responsive Expo web app and installable PWA for planning
+schoolwork, events, assignments, tests, and personal time. It works offline
+after the first successful load and does not require an account, API server, or
+database.
 
-The mobile app is Expo/React Native rather than the React/Vite PWA in the
-original brief, as selected before implementation. It does not include PWA
-installation or browser service-worker support.
+## Where your data lives
+
+- Tasks, events, and due dates are saved automatically in this browser's
+  `localStorage`.
+- On first load, the app asks the browser to keep its local storage persistent.
+  The browser may decline, so this is a best-effort protection.
+- Data belongs to this browser profile on this device. It does not sync to
+  another browser or device.
+- Clearing this site's data, switching browser profiles, or losing the device
+  can remove planner data. Export a JSON backup regularly; the app reminds you
+  when more than 7 days have passed since the last export.
+- In Settings, import a JSON backup and choose to replace existing data or
+  merge it. Merge skips records with IDs already present.
+- Any data from an earlier account-based/server version must be exported from
+  that version and imported here; it is not migrated automatically.
 
 ## Requirements
 
 - Node.js 20 or newer
 - pnpm 9 or newer
-- A PostgreSQL database that you manage
-- Expo Go for a physical-device development preview
 
-## Install and configure
+## Install and run
 
 From the project root:
 
 ```sh
 pnpm install
-cp .env.example .env
-```
-
-Edit `.env` and set a PostgreSQL connection string and a private session secret.
-Set up the schema with:
-
-```sh
-pnpm --filter @workspace/api-server run db:setup
-```
-
-In production, set `NODE_ENV=production`, `SESSION_SECRET`, `DATABASE_URL`,
-`CORS_ORIGIN`, and `PORT` in the hosting provider's environment settings. Use
-HTTPS so the session cookie is secure. `CORS_ORIGIN` is the exact origin of the
-app host; multiple origins can be comma-separated.
-
-Outside Replit, the API reads `DATABASE_URL`. In Replit, it requires
-`PLANNER_DATABASE_URL` and will not fall back to the Replit-managed database.
-
-## Run locally
-
-Start the API in one terminal:
-
-```sh
-pnpm --filter @workspace/api-server run dev
-```
-
-Start the Expo app in another terminal:
-
-```sh
 pnpm --filter @workspace/mobile run start
 ```
 
-Set `EXPO_PUBLIC_API_URL` to the API origin (for example,
-`http://localhost:3000`). For a physical phone, use an API host reachable on
-your network and update `CORS_ORIGIN` to the app's origin. The API is mounted
-under `/api`.
+The development command starts Expo's web target. It does not require Expo Go.
 
-## Build and run the API
+## Build the static site
 
 ```sh
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/api-server run start
+pnpm --filter @workspace/mobile run build
 ```
 
-The API binds to `0.0.0.0` and uses `PORT`, defaulting to `3000`. The Expo
-artifact has `start`, `build`, and `serve` scripts; `start` launches the normal
-Expo development server and `build` creates the static web preview.
+This exports the web app and PWA files to `artifacts/mobile/dist/`, including
+the web manifest, service worker, and icons. To preview the exported files:
+
+```sh
+pnpm --filter @workspace/mobile run serve
+```
+
+The preview server serves only the static export and falls back to the app shell
+for client-side routes.
 
 ## Deploy outside Replit
 
-Deploy the Express API as a Node.js service and attach a PostgreSQL database.
-Configure `DATABASE_URL`, `SESSION_SECRET`, `NODE_ENV=production`, `CORS_ORIGIN`,
-and `PORT`; run `schema.sql` once against that database. Build the Expo
-application with the public `EXPO_PUBLIC_API_URL` set to the deployed API origin.
-Expo's standard native build and submission process is separate from hosting the
-API. The planner's production app and API use standard Expo, Express, and
-PostgreSQL libraries. Replit's preview launcher is used only by the workspace
-Expo development workflow; the separate `start` script is a regular Expo CLI
-command.
+Publish the contents of `artifacts/mobile/dist/` to any static host that serves
+HTTPS and supports SPA route fallback to `index.html`. Configure the host's
+output directory as `artifacts/mobile/dist`; no Node API process, database, or
+environment secrets are needed. If the host requires an explicit build command,
+use:
 
-## Data and security
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @workspace/mobile run build
+```
 
-- Passwords are hashed with bcrypt.
-- Session IDs are stored in PostgreSQL and sent in HttpOnly cookies.
-- Every planner query is scoped to the authenticated account.
-- JSON import replaces the current account's planner data in one transaction.
-- Backup files contain planner records only, not account credentials or sessions.
+For Android installation, open the HTTPS site in Chrome and choose **Install
+app** or **Add to Home screen**. The service worker caches the app shell and
+static assets so the planner can reopen offline.
 
 ## Planner sections
 
-- Today: a date-specific schedule and task checklist.
-- Week: color-coded events by School, Clubs, Tutoring, Study, Social, and Personal.
-- Due: assignments and tests ordered by nearest due date.
-- Balance: weekly scheduled time grouped by category.
-- Settings: appearance, JSON export/import, and sign out.
+- **Today:** date-specific schedule and task checklist.
+- **Week:** events grouped by day and category.
+- **Due:** assignments and tests ordered by due date.
+- **Balance:** planned weekly time grouped by category.
+- **Settings:** appearance controls and JSON backup import/export.

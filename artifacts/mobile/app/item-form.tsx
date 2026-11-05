@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import {
   Alert,
-  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,43 +12,35 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  getListDeadlinesQueryKey,
-  getListEventsQueryKey,
-  getListTasksQueryKey,
-  useCreateDeadline,
-  useCreateEvent,
-  useCreateTask,
-  useDeleteDeadline,
-  useDeleteEvent,
-  useDeleteTask,
-  useUpdateDeadline,
-  useUpdateEvent,
-  useUpdateTask,
-} from "@workspace/api-client-react";
-import type { Category, DeadlineKind } from "@workspace/api-client-react";
-import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { CategoryChip } from "@/components/PlannerUI";
+  PLANNER_CATEGORIES,
+  usePlanner,
+  type DeadlineKind,
+  type PlannerCategory,
+} from "@/context/PlannerContext";
 import { useColors } from "@/hooks/useColors";
-import { dateToInput, dateTimeInput } from "@/components/PlannerUI";
+import { IconButton } from "@/components/PlannerUI";
 
-const categories: Category[] = [
-  "School",
-  "Clubs",
-  "Tutoring",
-  "Study",
-  "Social",
-  "Personal",
-];
+type ItemKind = "task" | "event" | "deadline";
 
-function localParts(value?: string) {
-  if (!value) return { date: dateToInput(new Date()), time: "15:00" };
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return { date: dateToInput(new Date()), time: "15:00" };
-  const hours = String(parsed.getHours()).padStart(2, "0");
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  return { date: dateToInput(parsed), time: `${hours}:${minutes}` };
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function localDateTime(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+    time: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
+function isValidDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export default function ItemFormScreen() {
@@ -60,468 +54,360 @@ export default function ItemFormScreen() {
     completed?: string;
     date?: string;
     time?: string;
+    endTime?: string;
     startsAt?: string;
     endsAt?: string;
     dueAt?: string;
     deadlineKind?: string;
   }>();
-  const itemKind = Array.isArray(params.kind) ? params.kind[0] : params.kind;
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const initialDate = useMemo(
-    () => localParts(params.kind === "event" ? params.startsAt : params.dueAt),
-    [params.dueAt, params.kind, params.startsAt],
-  );
-  const [title, setTitle] = useState(params.title ?? "");
-  const [date, setDate] = useState(params.date ?? initialDate.date);
-  const [time, setTime] = useState(params.time ?? initialDate.time);
-  const [endTime, setEndTime] = useState(
-    params.endsAt ? localParts(params.endsAt).time : "16:00",
-  );
-  const [category, setCategory] = useState<Category>(
-    categories.includes(params.category as Category)
-      ? (params.category as Category)
+  const planner = usePlanner();
+  const kind = first(params.kind) as ItemKind | undefined;
+  const id = first(params.id);
+  const startTime = localDateTime(first(params.startsAt));
+  const dueTime = localDateTime(first(params.dueAt));
+  const defaultDate = new Date();
+  const defaultDateString = `${defaultDate.getFullYear()}-${String(defaultDate.getMonth() + 1).padStart(2, "0")}-${String(defaultDate.getDate()).padStart(2, "0")}`;
+
+  const [title, setTitle] = useState(first(params.title) ?? "");
+  const [date, setDate] = useState(first(params.date) ?? startTime?.date ?? dueTime?.date ?? defaultDateString);
+  const [time, setTime] = useState(first(params.time) ?? startTime?.time ?? dueTime?.time ?? "15:00");
+  const [endTime, setEndTime] = useState(first(params.endTime) ?? localDateTime(first(params.endsAt))?.time ?? "16:00");
+  const [category, setCategory] = useState<PlannerCategory>(
+    PLANNER_CATEGORIES.includes(first(params.category) as PlannerCategory)
+      ? (first(params.category) as PlannerCategory)
       : "School",
   );
+  const [notes, setNotes] = useState(first(params.notes) ?? "");
   const [deadlineKind, setDeadlineKind] = useState<DeadlineKind>(
-    params.deadlineKind === "test" ? "test" : "assignment",
+    first(params.deadlineKind) === "test" ? "test" : "assignment",
   );
-  const [notes, setNotes] = useState(params.notes ?? "");
+  const [completed, setCompleted] = useState(first(params.completed) === "true");
   const [error, setError] = useState("");
-  const queryClient = useQueryClient();
-  const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
-  const deleteTask = useDeleteTask();
-  const createEvent = useCreateEvent();
-  const updateEvent = useUpdateEvent();
-  const deleteEvent = useDeleteEvent();
-  const createDeadline = useCreateDeadline();
-  const updateDeadline = useUpdateDeadline();
-  const deleteDeadline = useDeleteDeadline();
-  const isSaving =
-    createTask.isPending ||
-    updateTask.isPending ||
-    createEvent.isPending ||
-    updateEvent.isPending ||
-    createDeadline.isPending ||
-    updateDeadline.isPending;
 
-  const invalidateLists = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getListDeadlinesQueryKey() }),
-    ]);
-  };
+  const heading = useMemo(() => {
+    const label = kind === "task" ? "task" : kind === "event" ? "event" : "due date";
+    return `${id ? "Edit" : "Add"} ${label}`;
+  }, [id, kind]);
 
-  const validate = () => {
-    if (!title.trim()) return "Add a title first.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "Use a date in YYYY-MM-DD format.";
-    if (itemKind !== "deadline" && !/^\d{2}:\d{2}$/.test(time)) {
-      return "Use a time in 24-hour format, such as 15:30.";
-    }
-    if (itemKind === "event" && !/^\d{2}:\d{2}$/.test(endTime)) {
-      return "Add a valid end time.";
-    }
-    if (
-      itemKind === "event" &&
-      Date.parse(`${date}T${endTime}:00`) <= Date.parse(`${date}T${time}:00`)
-    ) {
-      return "The end time must be after the start time.";
-    }
-    return "";
-  };
-
-  const save = async () => {
-    Keyboard.dismiss();
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-    setError("");
-    try {
-      if (itemKind === "task") {
-        const data = {
-          title: title.trim(),
-          date,
-          time: time || null,
-          category,
-          notes: notes.trim() || null,
-          ...(params.completed === "true" ? { completed: true } : {}),
-        };
-        if (id) await updateTask.mutateAsync({ id, data });
-        else await createTask.mutateAsync({ data });
-      } else if (itemKind === "event") {
-        const data = {
-          title: title.trim(),
-          startsAt: dateTimeInput(date, time),
-          endsAt: dateTimeInput(date, endTime),
-          category,
-          notes: notes.trim() || null,
-        };
-        if (id) await updateEvent.mutateAsync({ id, data });
-        else await createEvent.mutateAsync({ data });
-      } else if (itemKind === "deadline") {
-        const data = {
-          title: title.trim(),
-          kind: deadlineKind,
-          dueAt: dateTimeInput(date, time),
-          notes: notes.trim() || null,
-          ...(params.completed === "true" ? { completed: true } : {}),
-        };
-        if (id) await updateDeadline.mutateAsync({ id, data });
-        else await createDeadline.mutateAsync({ data });
-      }
-      await invalidateLists();
-      router.back();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save changes.");
-    }
-  };
-
-  const remove = () => {
-    if (!id) return;
-    Alert.alert("Delete this item?", "This cannot be undone.", [
-      { text: "Keep it", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            if (itemKind === "task") await deleteTask.mutateAsync({ id });
-            else if (itemKind === "event") await deleteEvent.mutateAsync({ id });
-            else await deleteDeadline.mutateAsync({ id });
-            await invalidateLists();
-            router.back();
-          } catch (deleteError) {
-            setError(
-              deleteError instanceof Error ? deleteError.message : "Unable to delete this item.",
-            );
-          }
-        },
-      },
-    ]);
-  };
-
-  if (itemKind !== "task" && itemKind !== "event" && itemKind !== "deadline") {
-    router.back();
-    return null;
+  if (kind !== "task" && kind !== "event" && kind !== "deadline") {
+    return (
+      <View style={[styles.invalid, { backgroundColor: colors.background }]}>
+        <Text style={{ color: colors.foreground }}>Choose a planner item to edit.</Text>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={{ color: colors.primary }}>Go back</Text>
+        </Pressable>
+      </View>
+    );
   }
 
-  const heading =
-    itemKind === "task" ? "Task" : itemKind === "event" ? "Event" : "Due date";
-  const isEdit = Boolean(id);
+  const save = () => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
+      setError("Add a title before saving.");
+      return;
+    }
+    if (!isValidDate(date)) {
+      setError("Enter a valid date in YYYY-MM-DD format.");
+      return;
+    }
+    if (notes.length > 4000) {
+      setError("Notes must be 4,000 characters or fewer.");
+      return;
+    }
+
+    if (kind === "task") {
+      const task = {
+        title: cleanTitle,
+        date,
+        time: time.trim() || null,
+        category,
+        notes: notes.trim() || null,
+      };
+      if (id) planner.updateTask(id, { ...task, completed });
+      else planner.addTask(task);
+    } else if (kind === "event") {
+      if (!/^\d{2}:\d{2}$/.test(time) || !/^\d{2}:\d{2}$/.test(endTime)) {
+        setError("Enter valid start and end times in HH:MM format.");
+        return;
+      }
+      const startsAt = new Date(`${date}T${time}:00`);
+      const endsAt = new Date(`${date}T${endTime}:00`);
+      if (Number.isNaN(startsAt.getTime()) || endsAt <= startsAt) {
+        setError("The end time must be later than the start time.");
+        return;
+      }
+      const event = {
+        title: cleanTitle,
+        category,
+        notes: notes.trim() || null,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+      };
+      if (id) planner.updateEvent(id, event);
+      else planner.addEvent(event);
+    } else {
+      if (!/^\d{2}:\d{2}$/.test(time)) {
+        setError("Enter a valid due time in HH:MM format.");
+        return;
+      }
+      const dueAt = new Date(`${date}T${time}:00`);
+      if (Number.isNaN(dueAt.getTime())) {
+        setError("Enter a valid due date and time.");
+        return;
+      }
+      const deadline = {
+        title: cleanTitle,
+        kind: deadlineKind,
+        dueAt: dueAt.toISOString(),
+        notes: notes.trim() || null,
+      };
+      if (id) planner.updateDeadline(id, { ...deadline, completed });
+      else planner.addDeadline(deadline);
+    }
+    router.back();
+  };
+
+  const confirmDelete = () => {
+    const remove = () => {
+      if (kind === "task") planner.deleteTask(id!);
+      if (kind === "event") planner.deleteEvent(id!);
+      if (kind === "deadline") planner.deleteDeadline(id!);
+      router.back();
+    };
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm("Delete this planner item?")) remove();
+      return;
+    }
+    Alert.alert("Delete item?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: remove },
+    ]);
+  };
+
+  const inputStyle = [
+    styles.input,
+    {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      color: colors.foreground,
+      borderRadius: colors.radius.medium,
+    },
+  ];
 
   return (
-    <View style={[styles.page, { backgroundColor: colors.background }]}>
-      <KeyboardAwareScrollViewCompat
-        bottomOffset={82}
+    <KeyboardAvoidingView
+      style={[styles.flex, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[
-          styles.content,
-          { paddingHorizontal: colors.spacing.lg, paddingBottom: colors.spacing.xl },
-        ]}
+        contentContainerStyle={styles.content}
       >
-        <View style={styles.top}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close form"
-            testID="close-item-form"
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.close, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Feather name="x" size={22} color={colors.foreground} />
-          </Pressable>
-          <Text
-            accessibilityRole="header"
-            style={[
-              styles.heading,
-              { color: colors.foreground, fontFamily: colors.fontFamily.bold },
-            ]}
-          >
-            {isEdit ? `Edit ${heading.toLowerCase()}` : `Add ${heading.toLowerCase()}`}
-          </Text>
-          <View style={styles.close} />
+        <View style={styles.header}>
+          <IconButton name="x" accessibilityLabel="Close form" onPress={() => router.back()} />
+          <Text style={[styles.heading, { color: colors.foreground, fontFamily: colors.fontFamily.bold }]}>{heading}</Text>
+          <View style={styles.headerSpacer} />
         </View>
 
-        <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Title</Text>
-        <TextInput
-          testID="item-title"
-          accessibilityLabel="Title"
-          autoFocus={!isEdit}
-          placeholder={itemKind === "deadline" ? "e.g. History essay" : "What needs a place?"}
-          placeholderTextColor={colors.mutedForeground}
-          value={title}
-          onChangeText={setTitle}
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.input,
-              color: colors.foreground,
-              borderRadius: colors.radius.medium,
-              fontFamily: colors.fontFamily.regular,
-            },
-          ]}
-        />
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Title</Text>
+          <TextInput
+            accessibilityLabel="Title"
+            testID="item-title"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="What do you need to remember?"
+            placeholderTextColor={colors.mutedForeground}
+            maxLength={160}
+            style={inputStyle}
+          />
+        </View>
 
-        {itemKind === "deadline" ? (
-          <>
+        {kind === "deadline" ? (
+          <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Type</Text>
-            <View style={styles.pickerRow}>
-              {(["assignment", "test"] as DeadlineKind[]).map((kind) => (
+            <View style={styles.options}>
+              {(["assignment", "test"] as DeadlineKind[]).map((option) => (
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: deadlineKind === kind }}
-                  testID={`deadline-kind-${kind}`}
-                  key={kind}
-                  onPress={() => setDeadlineKind(kind)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: deadlineKind === option }}
+                  key={option}
+                  onPress={() => setDeadlineKind(option)}
                   style={[
-                    styles.choice,
+                    styles.option,
                     {
-                      borderColor: deadlineKind === kind ? colors.primary : colors.border,
-                      backgroundColor:
-                        deadlineKind === kind ? colors.secondary : colors.card,
-                      borderRadius: colors.radius.pill,
+                      backgroundColor: deadlineKind === option ? colors.secondary : colors.card,
+                      borderColor: deadlineKind === option ? colors.primary : colors.border,
+                      borderRadius: colors.radius.medium,
                     },
                   ]}
                 >
-                  <Text
-                    style={{
-                      color:
-                        deadlineKind === kind
-                          ? colors.secondaryForeground
-                          : colors.mutedForeground,
-                      fontFamily: colors.fontFamily.medium,
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {kind}
+                  <Text style={{ color: deadlineKind === option ? colors.secondaryForeground : colors.foreground, fontFamily: colors.fontFamily.medium }}>
+                    {option === "test" ? "Test" : "Assignment"}
                   </Text>
                 </Pressable>
               ))}
             </View>
-          </>
+          </View>
         ) : null}
 
-        <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>
-          {itemKind === "deadline" ? "Due date" : "Date"}
-        </Text>
-        <TextInput
-          testID="item-date"
-          accessibilityLabel="Date"
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.mutedForeground}
-          value={date}
-          onChangeText={setDate}
-          keyboardType="numbers-and-punctuation"
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.input,
-              color: colors.foreground,
-              borderRadius: colors.radius.medium,
-              fontFamily: colors.fontFamily.regular,
-            },
-          ]}
-        />
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>
+            {kind === "deadline" ? "Due date" : "Date"}
+          </Text>
+          <TextInput
+            accessibilityLabel={kind === "deadline" ? "Due date" : "Date"}
+            testID="item-date"
+            value={date}
+            onChangeText={setDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="none"
+            style={inputStyle}
+          />
+        </View>
 
-        <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>
-          {itemKind === "event" ? "Start time" : itemKind === "deadline" ? "Due time" : "Time"}
-        </Text>
-        <TextInput
-          testID="item-time"
-          accessibilityLabel="Time"
-          placeholder="15:30"
-          placeholderTextColor={colors.mutedForeground}
-          value={time}
-          onChangeText={setTime}
-          keyboardType="numbers-and-punctuation"
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.input,
-              color: colors.foreground,
-              borderRadius: colors.radius.medium,
-              fontFamily: colors.fontFamily.regular,
-            },
-          ]}
-        />
-        {itemKind === "event" ? (
-          <>
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>
+            {kind === "deadline" ? "Due time" : kind === "event" ? "Start time" : "Time"}
+          </Text>
+          <TextInput
+            accessibilityLabel={kind === "deadline" ? "Due time" : kind === "event" ? "Start time" : "Time"}
+            testID="item-time"
+            value={time}
+            onChangeText={setTime}
+            placeholder="HH:MM"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="none"
+            style={inputStyle}
+          />
+        </View>
+
+        {kind === "event" ? (
+          <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>End time</Text>
             <TextInput
-              testID="item-end-time"
               accessibilityLabel="End time"
-              placeholder="16:30"
-              placeholderTextColor={colors.mutedForeground}
+              testID="item-end-time"
               value={endTime}
               onChangeText={setEndTime}
-              keyboardType="numbers-and-punctuation"
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.input,
-                  color: colors.foreground,
-                  borderRadius: colors.radius.medium,
-                  fontFamily: colors.fontFamily.regular,
-                },
-              ]}
+              placeholder="HH:MM"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              style={inputStyle}
             />
-          </>
+          </View>
         ) : null}
 
-        {itemKind !== "deadline" ? (
-          <>
+        {kind !== "deadline" ? (
+          <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Category</Text>
-            <View style={styles.categoryGrid}>
-              {categories.map((choice) => (
+            <View style={styles.categoryWrap}>
+              {PLANNER_CATEGORIES.map((option) => (
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: category === choice }}
-                  testID={`category-${choice.toLowerCase()}`}
-                  key={choice}
-                  onPress={() => setCategory(choice)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: category === option }}
+                  key={option}
+                  onPress={() => setCategory(option)}
                   style={[
-                    styles.categoryChoice,
+                    styles.category,
                     {
-                      borderColor: category === choice ? colors.primary : colors.border,
-                      backgroundColor:
-                        category === choice ? colors.secondary : colors.card,
+                      backgroundColor: category === option ? colors.secondary : colors.card,
+                      borderColor: category === option ? colors.primary : colors.border,
                       borderRadius: colors.radius.pill,
                     },
                   ]}
                 >
-                  <CategoryChip category={choice} />
+                  <Text style={{ color: category === option ? colors.secondaryForeground : colors.foreground, fontSize: 12, fontFamily: colors.fontFamily.medium }}>
+                    {option}
+                  </Text>
                 </Pressable>
               ))}
             </View>
-          </>
+          </View>
         ) : null}
 
-        <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Notes (optional)</Text>
-        <TextInput
-          testID="item-notes"
-          accessibilityLabel="Notes"
-          multiline
-          textAlignVertical="top"
-          placeholder="Add a little context"
-          placeholderTextColor={colors.mutedForeground}
-          value={notes}
-          onChangeText={setNotes}
-          style={[
-            styles.notes,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.input,
-              color: colors.foreground,
-              borderRadius: colors.radius.medium,
-              fontFamily: colors.fontFamily.regular,
-            },
-          ]}
-        />
-        {error ? (
-          <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>
-            {error}
-          </Text>
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>Notes (optional)</Text>
+          <TextInput
+            accessibilityLabel="Notes"
+            testID="item-notes"
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Add a few details"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            maxLength={4000}
+            textAlignVertical="top"
+            style={[inputStyle, styles.notesInput]}
+          />
+        </View>
+
+        {id && kind !== "event" ? (
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: completed }}
+            testID="item-completed"
+            onPress={() => setCompleted((value) => !value)}
+            style={styles.completedRow}
+          >
+            <View style={[styles.checkbox, { borderColor: completed ? colors.primary : colors.border, backgroundColor: completed ? colors.primary : "transparent" }]}>
+              {completed ? <Feather name="check" size={13} color={colors.primaryForeground} /> : null}
+            </View>
+            <Text style={{ color: colors.foreground }}>Mark as complete</Text>
+          </Pressable>
         ) : null}
+
+        {error ? (
+          <Text accessibilityRole="alert" style={{ color: colors.destructive, fontSize: 12 }}>{error}</Text>
+        ) : null}
+
         <Pressable
           accessibilityRole="button"
           testID="save-item"
-          disabled={isSaving}
           onPress={save}
           style={({ pressed }) => [
-            styles.save,
-            {
-              backgroundColor: colors.primary,
-              borderRadius: colors.radius.pill,
-              opacity: pressed || isSaving ? 0.7 : 1,
-            },
+            styles.saveButton,
+            { backgroundColor: colors.primary, borderRadius: colors.radius.medium, opacity: pressed ? 0.8 : 1 },
           ]}
         >
-          <Text
-            style={{
-              color: colors.primaryForeground,
-              fontFamily: colors.fontFamily.semibold,
-              fontSize: colors.typography.body,
-            }}
-          >
-            {isSaving ? "Saving…" : isEdit ? "Save changes" : `Add ${heading.toLowerCase()}`}
-          </Text>
+          <Text style={{ color: colors.primaryForeground, fontFamily: colors.fontFamily.semibold }}>Save</Text>
         </Pressable>
-        {isEdit ? (
+
+        {id ? (
           <Pressable
             accessibilityRole="button"
             testID="delete-item"
-            onPress={remove}
-            style={({ pressed }) => [styles.delete, { opacity: pressed ? 0.65 : 1 }]}
+            onPress={confirmDelete}
+            style={styles.deleteButton}
           >
             <Feather name="trash-2" size={16} color={colors.destructive} />
-            <Text
-              style={{
-                color: colors.destructive,
-                fontFamily: colors.fontFamily.semibold,
-              }}
-            >
-              Delete {heading.toLowerCase()}
-            </Text>
+            <Text style={{ color: colors.destructive, fontFamily: colors.fontFamily.semibold }}>Delete</Text>
           </Pressable>
         ) : null}
-      </KeyboardAwareScrollViewCompat>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  content: { gap: 10, paddingTop: 14 },
-  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  close: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
-  heading: { fontSize: 21, textAlign: "center", textTransform: "capitalize" },
-  label: { fontSize: 13, marginTop: 8 },
-  input: {
-    minHeight: 52,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    fontSize: 15,
-  },
-  notes: {
-    minHeight: 96,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 15,
-  },
-  pickerRow: { flexDirection: "row", gap: 10 },
-  choice: {
-    minHeight: 42,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 18,
-  },
-  categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  categoryChoice: {
-    borderWidth: 1,
-    minHeight: 38,
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  error: { fontSize: 13, lineHeight: 18 },
-  save: {
-    minHeight: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-  },
-  delete: {
-    minHeight: 45,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
+  flex: { flex: 1 },
+  content: { padding: 20, paddingBottom: 40, gap: 16, width: "100%", maxWidth: 600, alignSelf: "center" },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 2 },
+  heading: { fontSize: 22, flex: 1 },
+  headerSpacer: { width: 40 },
+  field: { gap: 7 },
+  label: { fontSize: 13 },
+  input: { minHeight: 48, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 10, fontSize: 14 },
+  notesInput: { minHeight: 100, paddingTop: 12 },
+  options: { flexDirection: "row", gap: 8 },
+  option: { flex: 1, minHeight: 46, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  categoryWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  category: { minHeight: 35, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  completedRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
+  checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  saveButton: { minHeight: 50, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  deleteButton: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  invalid: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  backButton: { minHeight: 40, justifyContent: "center" },
 });

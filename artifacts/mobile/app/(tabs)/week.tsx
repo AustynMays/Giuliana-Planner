@@ -1,10 +1,20 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useListEvents } from "@workspace/api-client-react";
-import { CategoryChip, EmptyState, ErrorState, PageHeader, PlannerPage, SectionHeading, SmallButton, Surface, categoryColorFor, dateToInput, formatClock } from "@/components/PlannerUI";
-import { useAuth } from "@/context/AuthContext";
+import {
+  CategoryChip,
+  EmptyState,
+  PageHeader,
+  PlannerPage,
+  SectionHeading,
+  SmallButton,
+  Surface,
+  categoryColorFor,
+  dateToInput,
+  formatClock,
+} from "@/components/PlannerUI";
+import { usePlanner } from "@/context/PlannerContext";
 import { useColors } from "@/hooks/useColors";
 
 function mondayOf(date: Date) {
@@ -46,18 +56,11 @@ function openEvent(event?: {
 
 export default function WeekScreen() {
   const colors = useColors();
-  const { user } = useAuth();
+  const { events } = usePlanner();
   const [focusDate, setFocusDate] = useState(() => new Date());
   const weekStart = useMemo(() => mondayOf(focusDate), [focusDate]);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
-  const from = weekStart.toISOString();
-  const to = weekEnd.toISOString();
-  const eventQuery = useListEvents(
-    { from, to },
-    { query: { enabled: !!user } },
-  );
-  const events = eventQuery.data ?? [];
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(weekStart);
     date.setDate(date.getDate() + index);
@@ -65,36 +68,15 @@ export default function WeekScreen() {
     return {
       date,
       dayKey,
-      events: events.filter((event) => dateToInput(new Date(event.startsAt)) === dayKey),
+      events: events
+        .filter((event) => dateToInput(new Date(event.startsAt)) === dayKey)
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
     };
   });
   const label = `${weekStart.toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(weekEnd.getTime() - 1).toLocaleDateString([], { month: "short", day: "numeric" })}`;
 
-  if (eventQuery.isLoading) {
-    return <PlannerPage><PageHeader title="This week" /><View style={{ flex: 1 }} /></PlannerPage>;
-  }
-  if (eventQuery.isError) {
-    return (
-      <PlannerPage>
-        <PageHeader title="This week" />
-        <ErrorState
-          message={eventQuery.error instanceof Error ? eventQuery.error.message : "Could not load this week."}
-          onRetry={() => void eventQuery.refetch()}
-        />
-      </PlannerPage>
-    );
-  }
-
   return (
-    <PlannerPage
-      refreshControl={
-        <RefreshControl
-          refreshing={eventQuery.isFetching}
-          onRefresh={() => void eventQuery.refetch()}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <PlannerPage>
       <PageHeader title="This week" subtitle="A clear view of what's coming." />
       <Surface style={styles.weekCard}>
         <View style={styles.weekNav}>
@@ -141,13 +123,7 @@ export default function WeekScreen() {
                 <Text style={{ color: selected ? colors.primaryForeground : colors.mutedForeground, fontSize: 10 }}>
                   {date.toLocaleDateString([], { weekday: "short" })}
                 </Text>
-                <Text
-                  style={{
-                    color: selected ? colors.primaryForeground : colors.foreground,
-                    fontSize: 14,
-                    fontFamily: colors.fontFamily.semibold,
-                  }}
-                >
+                <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontSize: 14, fontFamily: colors.fontFamily.semibold }}>
                   {date.getDate()}
                 </Text>
                 {today ? <View style={[styles.todayDot, { backgroundColor: selected ? colors.primaryForeground : colors.primary }]} /> : <View style={styles.todayDot} />}
@@ -225,13 +201,7 @@ const styles = StyleSheet.create({
   dayLabel: { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 },
   noEvents: { fontSize: 13, paddingLeft: 3, paddingVertical: 4 },
   eventList: { gap: 8 },
-  eventCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 11,
-  },
+  eventCard: { borderWidth: StyleSheet.hairlineWidth, padding: 12, flexDirection: "row", alignItems: "stretch", gap: 11 },
   colorBar: { width: 3, borderRadius: 4 },
   eventDetails: { flex: 1, gap: 6, alignItems: "flex-start" },
   eventTime: { fontSize: 11 },

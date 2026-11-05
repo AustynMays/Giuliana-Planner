@@ -8,6 +8,7 @@ import {
   Text,
   View,
   type ScrollViewProps,
+  type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -31,13 +32,16 @@ export function PlannerPage({
           {
             paddingTop:
               Platform.OS === "web"
-                ? Math.max(insets.top, 67) + colors.spacing.md
+                ? Math.max(insets.top, colors.spacing.md) + colors.spacing.md
                 : insets.top + colors.spacing.md,
             paddingBottom:
               Platform.OS === "web"
                 ? 34 + 100
                 : insets.bottom + 110,
             paddingHorizontal: colors.spacing.lg,
+            width: "100%",
+            maxWidth: 960,
+            alignSelf: "center",
           },
           contentStyle,
         ]}
@@ -126,7 +130,7 @@ export function Surface({
   style,
 }: {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
   return (
