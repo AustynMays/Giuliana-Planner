@@ -344,7 +344,11 @@ export function SmallButton({
 
 export function formatClock(value: string) {
   const date = new Date(value);
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export function formatLongDate(value: Date) {

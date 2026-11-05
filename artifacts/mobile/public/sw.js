@@ -1,7 +1,6 @@
-const CACHE_NAME = "senior-planner-shell-v1";
+const CACHE_NAME = "senior-planner-shell-__BUILD_TIMESTAMP__";
 const SHELL_URLS = [
   "/",
-  "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];
@@ -10,7 +9,13 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS)),
   );
-  self.skipWaiting();
+  // Activate immediately on first install. Updates wait until the user taps
+  // the in-app refresh notice.
+  if (!self.registration.active) self.skipWaiting();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -37,25 +42,55 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const url = new URL(request.url);
+  const isIcon = /^\/icons\/[^/]+$/.test(url.pathname);
+  const isHashedExpoAsset =
+    /^\/_expo\/static\/.+[.-][a-f0-9]{8,}\.[^/]+$/i.test(url.pathname);
+
   event.respondWith(
     (async () => {
-      const cached = await caches.match(request);
-      if (cached) return cached;
+      if (isIcon || isHashedExpoAsset) {
+        const cached = await caches.match(request);
+        if (cached) return cached;
 
-      try {
         const response = await fetch(request);
         if (response.ok && response.type === "basic") {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());
         }
         return response;
-      } catch (error) {
-        if (request.mode === "navigate") {
+      }
+
+      const isHtml =
+        request.mode === "navigate" ||
+        request.destination === "document" ||
+        request.headers.get("accept")?.includes("text/html");
+
+      if (isHtml) {
+        try {
+          const response = await fetch(request);
+          if (
+            response.ok &&
+            response.type === "basic" &&
+            response.headers.get("content-type")?.includes("text/html")
+          ) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response.clone());
+          }
+          return response;
+        } catch {
+          const cachedPage = await caches.match(request);
+          if (cachedPage) return cachedPage;
+
           const shell = await caches.match("/");
           if (shell) return shell;
+          throw new Error("No cached planner page is available offline.");
         }
-        throw error;
       }
+
+      // Keep all other resources network-only so fresh non-hashed files are
+      // never hidden behind an old cache entry.
+      return fetch(request);
     })(),
   );
 });
