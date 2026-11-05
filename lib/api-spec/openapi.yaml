@@ -3,34 +3,501 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Portable planner API
 servers:
   - url: /api
-    description: Base API path
+    description: Planner API
 tags:
-  - name: health
-    description: Health operations
+  - name: auth
+    description: Account and session management
+  - name: planner
+    description: Events, tasks, and due dates
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
+      tags: [planner]
+      summary: Check API status
       responses:
         "200":
           description: Healthy
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: object
+                properties:
+                  status: { type: string }
+                required: [status]
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the current session
+      responses:
+        "204": { description: Signed out }
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [planner]
+      summary: List tasks in a date range
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createTask
+      tags: [planner]
+      summary: Add a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /tasks/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateTask
+      tags: [planner]
+      summary: Update a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskUpdate" }
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteTask
+      tags: [planner]
+      summary: Delete a task
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /events:
+    get:
+      operationId: listEvents
+      tags: [planner]
+      summary: List events in a date range
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createEvent
+      tags: [planner]
+      summary: Add an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventInput" }
+      responses:
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /events/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateEvent
+      tags: [planner]
+      summary: Update an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventUpdate" }
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteEvent
+      tags: [planner]
+      summary: Delete an event
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /deadlines:
+    get:
+      operationId: listDeadlines
+      tags: [planner]
+      summary: List assignments and tests
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Due dates
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Deadline" }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createDeadline
+      tags: [planner]
+      summary: Add an assignment or test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeadlineInput" }
+      responses:
+        "201":
+          description: Created due date
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deadline" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /deadlines/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateDeadline
+      tags: [planner]
+      summary: Update an assignment or test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeadlineUpdate" }
+      responses:
+        "200":
+          description: Updated due date
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deadline" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteDeadline
+      tags: [planner]
+      summary: Delete an assignment or test
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /summary/weekly:
+    get:
+      operationId: getWeeklySummary
+      tags: [planner]
+      summary: Get category time totals for a week
+      parameters:
+        - in: query
+          name: weekStart
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Time by category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weekStart: { type: string, format: date-time }
+                  totalMinutes: { type: integer }
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category: { $ref: "#/components/schemas/Category" }
+                        minutes: { type: integer }
+                        percent: { type: number }
+                      required: [category, minutes, percent]
+                required: [weekStart, totalMinutes, categories]
+        "401": { $ref: "#/components/responses/Error" }
+  /data/export:
+    get:
+      operationId: exportData
+      tags: [planner]
+      summary: Export all planner data
+      responses:
+        "200":
+          description: Portable planner backup
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backup" }
+        "401": { $ref: "#/components/responses/Error" }
+  /data/import:
+    post:
+      operationId: importData
+      tags: [planner]
+      summary: Replace planner data from a backup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BackupInput" }
+      responses:
+        "200":
+          description: Imported planner data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported: { type: integer }
+                required: [imported]
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
 components:
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+            required: [message]
   schemas:
-    HealthStatus:
+    Category:
+      type: string
+      enum: [School, Clubs, Tutoring, Study, Social, Personal]
+    Credentials:
       type: object
       properties:
-        status:
-          type: string
-      required:
-        - status
-
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+      required: [email, password]
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+      required: [id, email]
+    AuthResponse:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+      required: [user]
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        date: { type: string, format: date }
+        time: { type: string, nullable: true }
+        category: { $ref: "#/components/schemas/Category" }
+        notes: { type: string, nullable: true }
+        completed: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, title, date, category, completed, createdAt]
+    TaskInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 180 }
+        date: { type: string, format: date }
+        time: { type: string, nullable: true }
+        category: { $ref: "#/components/schemas/Category" }
+        notes: { type: string, nullable: true }
+      required: [title, date, category]
+    TaskUpdate:
+      allOf:
+        - { $ref: "#/components/schemas/TaskInput" }
+        - type: object
+          properties:
+            completed: { type: boolean }
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        category: { $ref: "#/components/schemas/Category" }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, title, startsAt, endsAt, category, createdAt]
+    EventInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 180 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        category: { $ref: "#/components/schemas/Category" }
+        notes: { type: string, nullable: true }
+      required: [title, startsAt, endsAt, category]
+    EventUpdate:
+      allOf:
+        - { $ref: "#/components/schemas/EventInput" }
+    Deadline:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        kind: { type: string, enum: [assignment, test] }
+        dueAt: { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+        completed: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, title, kind, dueAt, completed, createdAt]
+    DeadlineInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 180 }
+        kind: { type: string, enum: [assignment, test] }
+        dueAt: { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+      required: [title, kind, dueAt]
+    DeadlineUpdate:
+      allOf:
+        - { $ref: "#/components/schemas/DeadlineInput" }
+        - type: object
+          properties:
+            completed: { type: boolean }
+    Backup:
+      type: object
+      properties:
+        formatVersion: { type: integer, const: 1 }
+        exportedAt: { type: string, format: date-time }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+        deadlines:
+          type: array
+          items: { $ref: "#/components/schemas/Deadline" }
+      required: [formatVersion, exportedAt, tasks, events, deadlines]
+    BackupInput:
+      type: object
+      properties:
+        formatVersion: { type: integer, const: 1 }
+        tasks:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/TaskInput" }
+              - type: object
+                properties:
+                  completed: { type: boolean }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/EventInput" }
+        deadlines:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/DeadlineInput" }
+              - type: object
+                properties:
+                  completed: { type: boolean }
+      required: [formatVersion, tasks, events, deadlines]
