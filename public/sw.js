@@ -1,9 +1,10 @@
 const CACHE_NAME = "senior-planner-shell-__BUILD_TIMESTAMP__";
-const SHELL_URLS = [
-  "/",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-];
+// Paths are relative to wherever the app is hosted (site root or a
+// sub-folder like /Giuliana-Planner/).
+const SCOPE = new URL(self.registration.scope);
+const SHELL_URLS = ["./", "icons/icon-192.png", "icons/icon-512.png"].map(
+  (path) => new URL(path, SCOPE).href,
+);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -43,9 +44,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(request.url);
-  const isIcon = /^\/icons\/[^/]+$/.test(url.pathname);
+  if (!url.pathname.startsWith(SCOPE.pathname)) return;
+  const path = url.pathname.slice(SCOPE.pathname.length);
+  const isIcon = /^icons\/[^/]+$/.test(path);
   const isHashedExpoAsset =
-    /^\/_expo\/static\/.+[.-][a-f0-9]{8,}\.[^/]+$/i.test(url.pathname);
+    /^_expo\/static\/.+[.-][a-f0-9]{8,}\.[^/]+$/i.test(path);
 
   event.respondWith(
     (async () => {
@@ -82,7 +85,7 @@ self.addEventListener("fetch", (event) => {
           const cachedPage = await caches.match(request);
           if (cachedPage) return cachedPage;
 
-          const shell = await caches.match("/");
+          const shell = await caches.match(SCOPE.href);
           if (shell) return shell;
           throw new Error("No cached planner page is available offline.");
         }
