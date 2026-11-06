@@ -141,4 +141,11 @@ for (const file of await htmlFiles(outputDirectory)) {
 // GitHub Pages: don't treat folders starting with "_" (like _expo) as hidden.
 await writeFile(resolve(outputDirectory, ".nojekyll"), "");
 
+const singleFileSource = resolve(projectDirectory, "Giuliana-Planner.html");
+try {
+  await cp(singleFileSource, resolve(outputDirectory, "Giuliana-Planner.html"), { force: true });
+} catch {
+  // Single-file output is optional if build-pwa.mjs is run standalone.
+}
+
 console.log(`Static PWA exported to ${outputDirectory} (base path "${prefix}")`);

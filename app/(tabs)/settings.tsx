@@ -56,16 +56,72 @@ export default function SettingsScreen() {
     }
   };
 
+  const downloadPortableHtmlApp = async () => {
+    setMessage("");
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      setMessage("File download is only available in a web browser.");
+      return;
+    }
+    try {
+      const response = await fetch("./Giuliana-Planner.html", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Standalone file not found.");
+      }
+      let html = await response.text();
+      const embeddedState = {
+        formatVersion: 1,
+        createdAt: new Date().toISOString(),
+        lastExportAt: new Date().toISOString(),
+        tasks: planner.tasks,
+        events: planner.events,
+        deadlines: planner.deadlines,
+      };
+      html = html.replace(
+        /<script id="planner-embedded-state" type="application\/json">[\s\S]*?<\/script>/,
+        `<script id="planner-embedded-state" type="application/json">${JSON.stringify(embeddedState)}</script>`,
+      );
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "Giuliana-Planner.html";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      planner.markBackupExported();
+      setMessage("Downloaded Giuliana-Planner.html with your current planner data built in.");
+    } catch {
+      setMessage("Could not download the single-file app. Use Export JSON backup below.");
+    }
+  };
+
   const chooseBackup = () => {
     setMessage("");
     const picker = document.createElement("input");
     picker.type = "file";
-    picker.accept = ".json,application/json";
+    picker.accept = ".json,application/json,.html,text/html";
     picker.onchange = async () => {
       const file = picker.files?.[0];
       if (!file) return;
       try {
-        const parsed: unknown = JSON.parse(await file.text());
+        const text = await file.text();
+        let parsed: unknown;
+        if (file.name.toLowerCase().endsWith(".html")) {
+          const match = text.match(
+            /<script[^>]*id=["']planner-embedded-state["'][^>]*>([\s\S]*?)<\/script>/i,
+          );
+          const rawJson = match?.[1] ? JSON.parse(match[1]) : null;
+          parsed = rawJson
+            ? {
+                formatVersion: rawJson.formatVersion,
+                exportedAt: rawJson.lastExportAt ?? rawJson.createdAt ?? new Date().toISOString(),
+                tasks: rawJson.tasks,
+                events: rawJson.events,
+                deadlines: rawJson.deadlines,
+              }
+            : null;
+        } else {
+          parsed = JSON.parse(text);
+        }
         if (!isPlannerBackup(parsed)) {
           setMessage("That file is not a supported Senior Planner backup.");
           return;
@@ -113,6 +169,36 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </Surface>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: colors.fontFamily.semibold }]}>
+          One-Click App Setup (Phone & Computer)
+        </Text>
+        <Surface style={styles.backupCard}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
+            No extra software is needed. Here is how to make a 1-click icon on any device:
+          </Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>
+            • <Text style={{ fontFamily: colors.fontFamily.semibold }}>iPhone / iPad:</Text> Open in Safari, tap Share, then tap <Text style={{ fontFamily: colors.fontFamily.semibold }}>Add to Home Screen</Text>.{"\n"}
+            • <Text style={{ fontFamily: colors.fontFamily.semibold }}>Android:</Text> Open in Chrome, tap ⋮, then tap <Text style={{ fontFamily: colors.fontFamily.semibold }}>Install app</Text>.{"\n"}
+            • <Text style={{ fontFamily: colors.fontFamily.semibold }}>Computer (Offline File):</Text> Download the single-file app below, put <Text style={{ fontFamily: colors.fontFamily.semibold }}>Giuliana-Planner.html</Text> on your Desktop, and double-click it anytime.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            testID="download-portable-html"
+            onPress={() => void downloadPortableHtmlApp()}
+            style={({ pressed }) => [
+              styles.actionRow,
+              { backgroundColor: colors.primary, borderRadius: colors.radius.medium, opacity: pressed ? 0.75 : 1 },
+            ]}
+          >
+            <Feather name="download" size={18} color={colors.primaryForeground} />
+            <Text style={{ color: colors.primaryForeground, fontFamily: colors.fontFamily.semibold }}>
+              Download Portable App File (.html)
+            </Text>
+          </Pressable>
+        </Surface>
+      </View>
 
       {planner.backupDue ? (
         <Surface style={styles.backupNotice}>

@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "expo start --web",
-    "build": "node scripts/build-pwa.mjs",
+    "build": "node scripts/build-single-file.mjs && node scripts/build-pwa.mjs",
+    "build:file": "node scripts/build-single-file.mjs",
     "serve": "node server/serve.js",
     "preview": "npm run build && npm run serve",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -1,8 +1,16 @@
 # Senior Planner
 
 A planner for a busy high school senior: school, clubs, tutoring, studying,
-social time, and personal time. It runs as a website that can be installed on a
-phone or laptop like an app, and it works offline.
+social time, and personal time. It runs as a **single self-contained file**
+(`Giuliana-Planner.html`) or as an **installable website (PWA)** on a phone or
+laptop, and works 100% offline.
+
+## Easy No-Tech Way to Use It (Single File)
+
+1. Download or copy **[`Giuliana-Planner.html`](./Giuliana-Planner.html)** to your computer's Desktop (or any folder).
+2. **Double-click `Giuliana-Planner.html`** — it opens immediately in your default browser (Edge, Chrome, Safari) with zero extra software needed.
+3. All your tasks, events, and due dates save automatically in your browser.
+4. In **Settings → Save Updated Planner File (.html)**, you can also save a fresh copy of `Giuliana-Planner.html` with all your planner items **baked directly inside the `.html` file itself**, making it easy to move or send to another device.
 
 ## Where the data lives
 
