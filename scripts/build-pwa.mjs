@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,13 +9,17 @@ const projectDirectory = resolve(scriptDirectory, "..");
 const outputDirectory = resolve(projectDirectory, "dist");
 const publicDirectory = resolve(projectDirectory, "public");
 
+// Run the Expo CLI through Node directly so this works the same on
+// Windows, macOS, and Linux without depending on a specific package manager.
+const require = createRequire(import.meta.url);
+const expoCli = require.resolve("expo/bin/cli", { paths: [projectDirectory] });
+
 execFileSync(
-  "pnpm",
-  ["exec", "expo", "export", "--platform", "web", "--output-dir", "dist"],
+  process.execPath,
+  [expoCli, "export", "--platform", "web", "--output-dir", "dist"],
   {
     cwd: projectDirectory,
     stdio: "inherit",
-    env: { ...process.env, RCT_METRO_PORT: process.env.RCT_METRO_PORT || "18116" },
   },
 );
 

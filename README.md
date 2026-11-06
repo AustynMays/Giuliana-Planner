@@ -1,79 +1,80 @@
 # Senior Planner
 
-Senior Planner is a responsive Expo web app and installable PWA for planning
-schoolwork, events, assignments, tests, and personal time. It works offline
-after the first successful load and does not require an account, API server, or
-database.
+A planner for a busy high school senior: school, clubs, tutoring, studying,
+social time, and personal time. It runs as a website that can be installed on a
+phone or laptop like an app, and it works offline.
 
-## Where your data lives
+## Where the data lives
 
-- Tasks, events, and due dates are saved automatically in this browser's
-  `localStorage`.
-- On first load, the app asks the browser to keep its local storage persistent.
-  The browser may decline, so this is a best-effort protection.
-- Data belongs to this browser profile on this device. It does not sync to
-  another browser or device.
-- Clearing this site's data, switching browser profiles, or losing the device
-  can remove planner data. Export a JSON backup regularly; the app reminds you
-  when more than 7 days have passed since the last export.
-- In Settings, import a JSON backup and choose to replace existing data or
-  merge it. Merge skips records with IDs already present.
-- Any data from an earlier account-based/server version must be exported from
-  that version and imported here; it is not migrated automatically.
+Everything is saved **on the device, in the browser** (`localStorage`). There is
+no account, no server, and no database.
 
-## Requirements
+- The phone and the laptop each have their own separate planner. They do not sync.
+- Clearing the browser's site data, or uninstalling the app, erases the planner.
+- Use **Settings → Export JSON backup** regularly. The app reminds you after 7 days.
+- **Settings → Import JSON backup** restores a backup or moves data to another
+  device (choose *Replace* or *Merge*).
 
-- Node.js 20 or newer
-- pnpm 9 or newer
+## Sections
 
-## Install and run
+- **Today:** the day's schedule and to-do list.
+- **Week:** events color-coded by School, Clubs, Tutoring, Study, Social, Personal.
+- **Due:** assignments and tests, soonest first.
+- **Balance:** how the week's time splits across categories.
+- **Settings:** light/dark mode and backups.
 
-From the project root:
+## Run it on your own computer
+
+You need [Node.js](https://nodejs.org) version 20 or newer (the LTS download is fine).
 
 ```sh
-pnpm install
-pnpm --filter @workspace/mobile run start
+npm install        # one time, downloads the building blocks
+npm start          # opens a live development version in the browser
 ```
 
-The development command starts Expo's web target. It does not require Expo Go.
-
-## Build the static site
+To test the real, finished version (including offline mode and install):
 
 ```sh
-pnpm --filter @workspace/mobile run build
+npm run preview    # builds the site, then serves it at http://localhost:8081
 ```
 
-This exports the web app and PWA files to `artifacts/mobile/dist/`, including
-the web manifest, service worker, and icons. To preview the exported files:
+Other commands:
 
-```sh
-pnpm --filter @workspace/mobile run serve
+| Command             | What it does                                     |
+| ------------------- | ------------------------------------------------ |
+| `npm run build`     | Builds the finished website into the `dist` folder |
+| `npm run serve`     | Serves an existing `dist` folder locally         |
+| `npm run typecheck` | Checks the code for type errors                  |
+
+## Put it online (free)
+
+The finished site is just files in `dist`, so any static host works.
+For Netlify, Vercel, or Cloudflare Pages, connect this GitHub repo and use:
+
+- **Build command:** `npm run build`
+- **Publish / output directory:** `dist`
+
+Every time a change is merged on GitHub, the host rebuilds and the site updates.
+Installed copies pick up the new version and show an update message.
+
+## Install on Android
+
+Open the site in Chrome, tap the **⋮** menu, then **Install app** (or
+**Add to Home screen**).
+
+## Changing the look
+
+All colors live in `constants/colors.ts` (light and dark versions), so the
+theme can be changed in one file.
+
+## Project layout
+
 ```
-
-The preview server serves only the static export and falls back to the app shell
-for client-side routes.
-
-## Deploy outside Replit
-
-Publish the contents of `artifacts/mobile/dist/` to any static host that serves
-HTTPS and supports SPA route fallback to `index.html`. Configure the host's
-output directory as `artifacts/mobile/dist`; no Node API process, database, or
-environment secrets are needed. If the host requires an explicit build command,
-use:
-
-```sh
-pnpm install --frozen-lockfile
-pnpm --filter @workspace/mobile run build
+app/            screens (Today, Week, Due, Balance, Settings, add/edit form)
+components/     shared building blocks
+context/        planner data (saving/loading) and light/dark setting
+constants/      colors and spacing (the theme)
+public/         install files: manifest, service worker, icons
+scripts/        build script that turns the app into an installable website
+server/         tiny local preview server (only used on your computer)
 ```
-
-For Android installation, open the HTTPS site in Chrome and choose **Install
-app** or **Add to Home screen**. The service worker caches the app shell and
-static assets so the planner can reopen offline.
-
-## Planner sections
-
-- **Today:** date-specific schedule and task checklist.
-- **Week:** events grouped by day and category.
-- **Due:** assignments and tests ordered by due date.
-- **Balance:** planned weekly time grouped by category.
-- **Settings:** appearance controls and JSON backup import/export.
