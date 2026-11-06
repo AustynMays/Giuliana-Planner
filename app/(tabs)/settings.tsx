@@ -63,7 +63,11 @@ export default function SettingsScreen() {
       return;
     }
     try {
-      const response = await fetch("./Giuliana-Planner.html", { cache: "no-store" });
+      const manifestHref =
+        document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href ??
+        `${window.location.origin}/`;
+      const targetUrl = new URL("Giuliana-Planner.html", manifestHref).href;
+      const response = await fetch(targetUrl);
       if (!response.ok) {
         throw new Error("Standalone file not found.");
       }

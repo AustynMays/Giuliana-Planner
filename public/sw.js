@@ -2,9 +2,12 @@ const CACHE_NAME = "senior-planner-shell-__BUILD_TIMESTAMP__";
 // Paths are relative to wherever the app is hosted (site root or a
 // sub-folder like /Giuliana-Planner/).
 const SCOPE = new URL(self.registration.scope);
-const SHELL_URLS = ["./", "icons/icon-192.png", "icons/icon-512.png"].map(
-  (path) => new URL(path, SCOPE).href,
-);
+const SHELL_URLS = [
+  "./",
+  "Giuliana-Planner.html",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+].map((path) => new URL(path, SCOPE).href);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
