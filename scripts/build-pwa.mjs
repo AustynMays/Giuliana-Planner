@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,11 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectDirectory = resolve(scriptDirectory, "..");
 const outputDirectory = resolve(projectDirectory, "dist");
 const publicDirectory = resolve(projectDirectory, "public");
+
+// BASE_URL lets the site live in a sub-folder, e.g. "/Giuliana-Planner" on
+// GitHub Pages. Leave it empty when the site is served from the root.
+const baseUrl = (process.env.BASE_URL || "").replace(/\/+$/, "");
+const prefix = `${baseUrl}/`;
 
 // Run the Expo CLI through Node directly so this works the same on
 // Windows, macOS, and Linux without depending on a specific package manager.
@@ -35,20 +40,15 @@ await writeFile(
   workerSource.replace("__BUILD_TIMESTAMP__", buildTimestamp),
 );
 
-const indexPath = resolve(outputDirectory, "index.html");
-let html = await readFile(indexPath, "utf8");
-
 const pwaHead = [
-  '<link rel="manifest" href="/manifest.json">',
+  `<link rel="manifest" href="${prefix}manifest.json">`,
   '<meta name="theme-color" content="#315a46">',
   '<meta name="mobile-web-app-capable" content="yes">',
   '<meta name="apple-mobile-web-app-capable" content="yes">',
   '<meta name="apple-mobile-web-app-status-bar-style" content="default">',
-  '<link rel="apple-touch-icon" href="/icons/icon-192.png">',
+  '<meta name="apple-mobile-web-app-title" content="Planner">',
+  `<link rel="apple-touch-icon" href="${prefix}icons/icon-192.png">`,
 ].join("\n");
-if (!html.includes('rel="manifest"')) {
-  html = html.replace("</head>", `${pwaHead}\n</head>`);
-}
 
 const workerRegistration = `<style>
   #pwa-update-banner {
@@ -103,7 +103,7 @@ const workerRegistration = `<style>
       if (updateRequested) window.location.reload();
     });
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+      navigator.serviceWorker.register("${prefix}sw.js", { scope: "${prefix}", updateViaCache: "none" })
         .then(function (registration) {
           workerRegistration = registration;
           watchForUpdates(registration);
@@ -113,9 +113,32 @@ const workerRegistration = `<style>
     });
   }
 </script>`;
-if (!html.includes('serviceWorker.register("/sw.js"')) {
-  html = html.replace("</body>", `${workerRegistration}\n</body>`);
+// Add the install tags and offline/update script to every page, so the app
+// can be installed and updated no matter which screen it was opened on.
+async function htmlFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map((entry) => {
+      const full = resolve(directory, entry.name);
+      if (entry.isDirectory()) return entry.name === "_expo" ? [] : htmlFiles(full);
+      return entry.name.endsWith(".html") ? [full] : [];
+    }),
+  );
+  return files.flat();
 }
 
-await writeFile(indexPath, html);
-console.log(`Static PWA exported to ${outputDirectory}`);
+for (const file of await htmlFiles(outputDirectory)) {
+  let html = await readFile(file, "utf8");
+  if (!html.includes('rel="manifest"')) {
+    html = html.replace("</head>", `${pwaHead}\n</head>`);
+  }
+  if (!html.includes("pwa-update-banner")) {
+    html = html.replace("</body>", `${workerRegistration}\n</body>`);
+  }
+  await writeFile(file, html);
+}
+
+// GitHub Pages: don't treat folders starting with "_" (like _expo) as hidden.
+await writeFile(resolve(outputDirectory, ".nojekyll"), "");
+
+console.log(`Static PWA exported to ${outputDirectory} (base path "${prefix}")`);

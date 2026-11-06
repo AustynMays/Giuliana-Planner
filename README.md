@@ -46,21 +46,40 @@ Other commands:
 | `npm run serve`     | Serves an existing `dist` folder locally         |
 | `npm run typecheck` | Checks the code for type errors                  |
 
-## Put it online (free)
+## Where it's published
 
-The finished site is just files in `dist`, so any static host works.
-For Netlify, Vercel, or Cloudflare Pages, connect this GitHub repo and use:
+The planner is published with **GitHub Pages**, at:
 
-- **Build command:** `npm run build`
-- **Publish / output directory:** `dist`
+`https://<github-username>.github.io/<repo-name>/`
 
-Every time a change is merged on GitHub, the host rebuilds and the site updates.
-Installed copies pick up the new version and show an update message.
+GitHub only sends the app's files to the device. The planner data never goes
+to GitHub. It stays on each device.
 
-## Install on Android
+Publishing is automatic. Every change merged into `main` runs
+`.github/workflows/deploy.yml`, which builds the site and publishes it.
+Installed copies pick up the new version and show an "Update available" message.
 
-Open the site in Chrome, tap the **⋮** menu, then **Install app** (or
-**Add to Home screen**).
+**One-time setup:** in the repo, go to **Settings → Pages**, and under
+**Build and deployment → Source** choose **GitHub Actions**.
+(On a free GitHub account, Pages requires the repo to be public.)
+
+The site is plain files, so any other static host also works.
+Use build command `npm run build` and output folder `dist`. If the host puts the
+site in a sub-folder, set the `BASE_URL` environment variable to that folder
+(for example `/my-planner`).
+
+## Install it
+
+**iPhone:** open the link in **Safari**, tap the **Share** button, then
+**Add to Home Screen**. Always open the planner from the home-screen icon.
+On iPhone, the home-screen app keeps its own saved data, separate from Safari.
+
+**Laptop (Chrome or Edge):** open the link and click the **install icon** in the
+address bar, or use the browser menu and choose **Install Senior Planner**.
+
+**Android:** open the link in Chrome, tap **⋮**, then **Install app**.
+
+After the first visit, the app opens without internet.
 
 ## Changing the look
 
