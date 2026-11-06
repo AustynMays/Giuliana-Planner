@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "Senior Planner",
-    "slug": "mobile",
+    "slug": "senior-planner",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "seniorplanner",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false
